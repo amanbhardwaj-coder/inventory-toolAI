@@ -12,6 +12,26 @@ def save_config(config, path):
         json.dump(config, f, indent=2)
 
 
+def _merge_series(existing, incoming):
+    existing = existing.astype(str).fillna("")
+    incoming = incoming.astype(str).fillna("")
+
+    result = []
+
+    for old, new in zip(existing.tolist(), incoming.tolist()):
+        old = "" if old.lower() == "nan" else old
+        new = "" if new.lower() == "nan" else new
+
+        if old.strip() and new.strip() and old.strip() != new.strip():
+            result.append(f"{old},{new}")
+        elif old.strip():
+            result.append(old)
+        else:
+            result.append(new)
+
+    return pd.Series(result)
+
+
 def create_normalized_file(df, config):
 
     rename = {}
@@ -35,36 +55,27 @@ def create_normalized_file(df, config):
     normalized = df.rename(columns=rename)
 
 
-    # Merge duplicate accepted headers created by AI mapping
+    # Merge duplicate columns created by AI mapping
     if normalized.columns.duplicated().any():
 
-        result = {}
+        merged = {}
 
         for column in normalized.columns:
 
-            if column not in result:
-                result[column] = normalized[column]
+            if column not in merged:
+                merged[column] = normalized[column]
             else:
-                existing = result[column].astype(str).replace("nan", "")
-                incoming = normalized[column].astype(str).replace("nan", "")
-
-                result[column] = existing.where(
-                    existing.str.strip() != "",
-                    incoming
+                merged[column] = _merge_series(
+                    merged[column],
+                    normalized[column]
                 )
 
-        normalized = pd.DataFrame(result)
+        normalized = pd.DataFrame(merged)
 
 
-    # Final safety check for Streamlit/PyArrow
     normalized.columns = [
         str(col).strip()
         for col in normalized.columns
-    ]
-
-    normalized = normalized.loc[
-        :,
-        ~normalized.columns.duplicated()
     ]
 
     return normalized
