@@ -51,7 +51,13 @@ except Exception:
 # ==========================================================
 # 1. FILE PATHS
 # ==========================================================
-MAPPING_FILE = "data-headers-2025-10-14.csv"
+HEADER_CONFIG_DIR = "configs/headers"
+HEADER_CONFIG_FILES = {
+    "jewelry": "jewelry.csv",
+    "lab-grown": "lab-grown.csv",
+    "diamond": "diamond.csv",
+}
+ACTIVE_MAPPING_FILE = None
 RULES_FILE   = "normalization_rules.json"
 
 SUPPORTED_UPLOAD_TYPES = ["csv", "tsv", "txt", "xlsx", "pdf"]
@@ -100,42 +106,75 @@ IC_TO_BASE = {
 def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
-def ensure_mapping_file_exists() -> None:
-    if not os.path.exists(MAPPING_FILE):
-        df = pd.DataFrame([
-            {"Setter name": "stock_num",    "Header variations": "Stock Number,SKU"},
-            {"Setter name": "price",        "Header variations": "Price,Base Price,Retail Price,MSRP"},
-            {"Setter name": "master_stock", "Header variations": "Master stock,Master Stock,master_stock,masterstock"},
-        ])
-        df.to_csv(MAPPING_FILE, index=False)
+def detect_inventory_type(columns: List[str]) -> str:
+    norms = [_norm(c) for c in columns]
+    scores = {"jewelry": 0, "diamond": 0, "lab-grown": 0}
 
-def load_mapping_file() -> None:
-    ensure_mapping_file_exists()
+    jewelry_keys = ["jewelry", "metal", "ringsize", "setting", "prong", "shank", "headstyle"]
+    diamond_keys = ["carat", "clarity", "color", "cut", "certificate", "depth", "table"]
+    lab_keys = ["labgrown", "lgd", "laboratory"]
+
+    for col in norms:
+        if any(k in col for k in jewelry_keys):
+            scores["jewelry"] += 1
+        if any(k in col for k in diamond_keys):
+            scores["diamond"] += 1
+        if any(k in col for k in lab_keys):
+            scores["lab-grown"] += 1
+
+    return max(scores, key=scores.get)
+
+
+def load_mapping_file(inventory_type: str = "jewelry") -> None:
+    global ACTIVE_MAPPING_FILE
+
     VAR_TO_SETTER.clear()
     SETTER_TO_CANONICAL.clear()
-    df_map = pd.read_csv(MAPPING_FILE)
+
+    file_name = HEADER_CONFIG_FILES.get(inventory_type, HEADER_CONFIG_FILES["jewelry"])
+    mapping_file = os.path.join(HEADER_CONFIG_DIR, file_name)
+    ACTIVE_MAPPING_FILE = mapping_file
+
+    if not os.path.exists(mapping_file):
+        raise FileNotFoundError(
+            f"Header configuration missing: {mapping_file}. Please add it under configs/headers."
+        )
+
+    df_map = pd.read_csv(mapping_file)
+
     for _, row in df_map.iterrows():
         setter = str(row.get("Setter name", "")).strip()
-        vars_  = [v.strip() for v in str(row.get("Header variations", "")).replace("\r\n", " ").split(",") if v.strip()]
-        if setter:
-            if vars_:
-                SETTER_TO_CANONICAL[setter] = vars_[0]
-            for v in vars_:
-                VAR_TO_SETTER[_norm(v)] = setter
+        variations = [
+            v.strip()
+            for v in str(row.get("Header variations", "")).replace("\r\n", " ").split(",")
+            if v.strip()
+        ]
+
+        if not setter:
+            continue
+
+        for header in variations:
+            VAR_TO_SETTER[_norm(header)] = setter
+            SETTER_TO_CANONICAL[setter] = header
+
 
 def update_mapping_manually(header: str, setter: str):
-    df = pd.read_csv(MAPPING_FILE)
+    if not ACTIVE_MAPPING_FILE:
+        raise ValueError("Mapping file is not loaded yet")
+
+    df = pd.read_csv(ACTIVE_MAPPING_FILE)
     valid_setters = df["Setter name"].unique().tolist()
+
     if setter not in valid_setters:
         raise ValueError(f"Setter '{setter}' not found. Valid: {valid_setters[:20]} ...")
+
     idx = df[df["Setter name"] == setter].index[0]
     current_vars = str(df.at[idx, "Header variations"])
+
     if header not in current_vars:
         df.at[idx, "Header variations"] = f"{current_vars}, {header}"
-        df.to_csv(MAPPING_FILE, index=False)
+        df.to_csv(ACTIVE_MAPPING_FILE, index=False)
         load_mapping_file()
-
-load_mapping_file()
 
 
 # ==========================================================
@@ -214,6 +253,9 @@ def canonicalize_headers(columns: List[str]) -> Tuple[List[str], Dict[str, str],
 
 def clean_input_csv(csv_text: str, rules: Dict[str, Any]) -> Dict[str, Any]:
     parsed = smart_parse(csv_text)
+
+    if parsed["columns"]:
+        load_mapping_file(detect_inventory_type(parsed["columns"]))
     cols, rows = parsed["columns"], parsed["rows"]
     if not cols:
         return {"cleaned_csv": "", "diff": {}}
