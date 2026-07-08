@@ -1,8 +1,13 @@
-Upload:
+Upload your accepted header files here:
+
 jewelry.csv
 diamond.csv
 lab-grown.csv
 
-Rules:
-Header variations = accepted vendor names
-Setter name = hidden internal field
+Expected columns:
+Setter name
+Header variations
+
+Important:
+- Header variations are accepted user-facing headers.
+- Setter name is hidden/internal only.

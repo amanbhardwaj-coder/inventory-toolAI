@@ -10,6 +10,7 @@ OUTPUT_DIR = Path("configs/generated")
 
 st.set_page_config(page_title="AI Inventory Agent", layout="wide")
 
+
 def load_header_knowledge():
     knowledge = {}
 
@@ -27,15 +28,21 @@ def load_header_knowledge():
             if not setter or not variations:
                 continue
 
-            # first variation is treated as accepted display header
             accepted_header = variations[0]
 
             knowledge[setter] = {
                 "accepted_header": accepted_header,
-                "variations": variations
+                "variations": variations,
             }
 
     return knowledge
+
+
+def safe_dataframe_preview(df, rows=20):
+    preview = df.head(rows).copy()
+    preview.columns = [str(c).strip() for c in preview.columns]
+    preview = preview.loc[:, ~preview.columns.duplicated()]
+    st.dataframe(preview, use_container_width=True)
 
 
 st.title("AI Inventory Agent")
@@ -52,32 +59,32 @@ Example:
 - Convert metal values into Available Metals
 - Keep Jewelry Style static
 - Create variants only for metal and shape
-- Use description to detect jewelry type
-"""
+- Use description to identify jewelry type
+- 14K metal prices should be 500 and the rest should be 1000
+""",
 )
 
 if uploaded:
 
-    if uploaded.name.endswith(".xlsx"):
-        df = pd.read_excel(uploaded)
+    if uploaded.name.lower().endswith(".xlsx"):
+        df = pd.read_excel(uploaded, dtype=str, keep_default_na=False)
     else:
-        df = pd.read_csv(uploaded)
+        df = pd.read_csv(uploaded, dtype=str, keep_default_na=False)
 
     st.subheader("File Preview")
-    st.dataframe(df.head(10))
+    safe_dataframe_preview(df, 10)
 
     if st.button("Run AI Analysis"):
 
-        agent = InventoryAgent(
-            load_header_knowledge()
-        )
+        agent = InventoryAgent(load_header_knowledge())
 
         config = agent.analyze(
             columns=list(df.columns),
-            instructions=instructions
+            instructions=instructions,
         )
 
         st.session_state["config"] = config
+        st.session_state["source_df"] = df
 
 
 if "config" in st.session_state:
@@ -88,44 +95,66 @@ if "config" in st.session_state:
 
     rows = []
 
-    for item in config["mapping"]:
+    for item in config.get("mapping", []):
         rows.append({
-            "Vendor Column": item["vendor_column"],
-            "Accepted Header": item["accepted_header"],
-            "Confidence": item["confidence"]
+            "Vendor Column": item.get("vendor_column", ""),
+            "Accepted Header": item.get("accepted_header", ""),
+            "Confidence": item.get("confidence", 0),
         })
 
     edited = st.data_editor(
         pd.DataFrame(rows),
-        use_container_width=True
+        use_container_width=True,
+        num_rows="fixed",
     )
 
     if st.button("Approve Mapping"):
 
-        config["mapping"] = edited.to_dict("records")
+        df = st.session_state.get("source_df")
+
+        edited_rows = edited.to_dict("records")
+
+        config["mapping"] = [
+            {
+                "vendor_column": row.get("Vendor Column", ""),
+                "accepted_header": row.get("Accepted Header", ""),
+                "confidence": row.get("Confidence", 0),
+            }
+            for row in edited_rows
+        ]
 
         save_config(
             config,
-            OUTPUT_DIR / "mapping_config.json"
+            OUTPUT_DIR / "mapping_config.json",
         )
 
         normalized = create_normalized_file(
             df,
-            config
+            config,
         )
+
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
         normalized.to_csv(
             OUTPUT_DIR / "normalized_input.csv",
-            index=False
+            index=False,
         )
 
         st.success("Mapping approved and normalized input created.")
 
         st.subheader("Normalized Input Preview")
-        st.dataframe(normalized.head(20))
+        safe_dataframe_preview(normalized, 20)
 
         st.download_button(
             "Download normalized_input.csv",
             normalized.to_csv(index=False),
-            "normalized_input.csv"
+            "normalized_input.csv",
+            mime="text/csv",
+        )
+
+        st.download_button(
+            "Download mapping_config.json",
+            (OUTPUT_DIR / "mapping_config.json").read_text(encoding="utf-8"),
+            "mapping_config.json",
+            mime="application/json",
         )

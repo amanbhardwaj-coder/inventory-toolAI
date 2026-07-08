@@ -12,10 +12,10 @@ class RefinementAgent:
 
         values = []
 
-        for x in value.split(","):
-            x = x.strip()
+        for item in value.split(","):
+            item = item.strip()
 
-            if x and x not in values:
-                values.append(x)
+            if item and item not in values:
+                values.append(item)
 
         return ",".join(values)

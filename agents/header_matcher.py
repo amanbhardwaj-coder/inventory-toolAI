@@ -21,21 +21,23 @@ class HeaderMatcher:
                 "vendor_column": column,
                 "accepted_header": "",
                 "internal_setter": "",
-                "confidence": 0
+                "confidence": 0,
             }
 
             for setter, data in self.knowledge.items():
 
-                accepted = data["accepted_header"]
+                accepted = data.get("accepted_header", "")
+                variations = data.get("variations", [])
 
-                for variation in data["variations"]:
+                for variation in variations:
 
                     score = 0
+                    c = norm(column)
+                    v = norm(variation)
 
-                    if norm(column) == norm(variation):
+                    if c == v:
                         score = 1
-
-                    elif norm(column) in norm(variation) or norm(variation) in norm(column):
+                    elif c and v and (c in v or v in c):
                         score = 0.8
 
                     if score > best["confidence"]:
@@ -43,7 +45,7 @@ class HeaderMatcher:
                             "vendor_column": column,
                             "accepted_header": accepted,
                             "internal_setter": setter,
-                            "confidence": score
+                            "confidence": score,
                         }
 
             output.append(best)
