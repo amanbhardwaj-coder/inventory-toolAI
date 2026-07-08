@@ -1,38 +1,52 @@
 import re
 
-def norm(value):
-    return re.sub(r"[^a-z0-9]", "", str(value).lower())
+def norm(x):
+    return re.sub(r"[^a-z0-9]", "", str(x).lower())
+
 
 class HeaderMatcher:
+
     def __init__(self, knowledge):
         self.knowledge = knowledge
 
+
     def match(self, columns):
-        results = {}
-        for col in columns:
+
+        output = []
+
+        for column in columns:
+
             best = None
-            col_norm = norm(col)
 
-            for setter, variations in self.knowledge.items():
-                for variation in variations:
-                    v_norm = norm(variation)
+            for setter, data in self.knowledge.items():
 
-                    if col_norm == v_norm:
-                        score = 1.0
-                    elif col_norm in v_norm or v_norm in col_norm:
-                        score = 0.8
-                    else:
-                        score = 0
+                accepted = data["accepted_header"]
+
+                for variation in data["variations"]:
+
+                    score = 0
+
+                    if norm(column) == norm(variation):
+                        score = 1
+
+                    elif norm(column) in norm(variation) or norm(variation) in norm(column):
+                        score = .8
 
                     if score and (not best or score > best["confidence"]):
                         best = {
-                            "field": setter,
+                            "vendor_column": column,
+                            "accepted_header": accepted,
+                            "internal_setter": setter,
                             "confidence": score
                         }
 
-            results[col] = best or {
-                "field": "",
-                "confidence": 0
-            }
+            output.append(
+                best or {
+                    "vendor_column": column,
+                    "accepted_header": "",
+                    "internal_setter": "",
+                    "confidence": 0
+                }
+            )
 
-        return results
+        return output
