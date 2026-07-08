@@ -31,4 +31,40 @@ def create_normalized_file(df, config):
         if vendor_column and accepted_header:
             rename[vendor_column] = accepted_header
 
-    return df.rename(columns=rename)
+
+    normalized = df.rename(columns=rename)
+
+
+    # Merge duplicate accepted headers created by AI mapping
+    if normalized.columns.duplicated().any():
+
+        result = {}
+
+        for column in normalized.columns:
+
+            if column not in result:
+                result[column] = normalized[column]
+            else:
+                existing = result[column].astype(str).replace("nan", "")
+                incoming = normalized[column].astype(str).replace("nan", "")
+
+                result[column] = existing.where(
+                    existing.str.strip() != "",
+                    incoming
+                )
+
+        normalized = pd.DataFrame(result)
+
+
+    # Final safety check for Streamlit/PyArrow
+    normalized.columns = [
+        str(col).strip()
+        for col in normalized.columns
+    ]
+
+    normalized = normalized.loc[
+        :,
+        ~normalized.columns.duplicated()
+    ]
+
+    return normalized

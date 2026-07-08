@@ -1,19 +1,6 @@
-Replace the Approve Mapping section in app.py:
+The duplicate dataframe issue is fixed inside agents/config_builder.py.
 
-OLD:
-config["mapping"] = edited.to_dict("records")
+No manual app.py patch is required.
 
-NEW:
-
-edited_rows = edited.to_dict("records")
-
-config["mapping"] = [
-    {
-        "vendor_column": row.get("Vendor Column"),
-        "accepted_header": row.get("Accepted Header"),
-        "confidence": row.get("Confidence", 0)
-    }
-    for row in edited_rows
-]
-
-This preserves the AI mapping structure after Streamlit edits.
+The normalized dataframe is now cleaned before:
+st.dataframe(normalized.head(20))
