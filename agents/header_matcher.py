@@ -1,7 +1,8 @@
 import re
 
-def norm(x):
-    return re.sub(r"[^a-z0-9]", "", str(x).lower())
+
+def norm(value):
+    return re.sub(r"[^a-z0-9]", "", str(value).lower())
 
 
 class HeaderMatcher:
@@ -16,7 +17,12 @@ class HeaderMatcher:
 
         for column in columns:
 
-            best = None
+            best = {
+                "vendor_column": column,
+                "accepted_header": "",
+                "internal_setter": "",
+                "confidence": 0
+            }
 
             for setter, data in self.knowledge.items():
 
@@ -30,9 +36,9 @@ class HeaderMatcher:
                         score = 1
 
                     elif norm(column) in norm(variation) or norm(variation) in norm(column):
-                        score = .8
+                        score = 0.8
 
-                    if score and (not best or score > best["confidence"]):
+                    if score > best["confidence"]:
                         best = {
                             "vendor_column": column,
                             "accepted_header": accepted,
@@ -40,13 +46,6 @@ class HeaderMatcher:
                             "confidence": score
                         }
 
-            output.append(
-                best or {
-                    "vendor_column": column,
-                    "accepted_header": "",
-                    "internal_setter": "",
-                    "confidence": 0
-                }
-            )
+            output.append(best)
 
         return output
