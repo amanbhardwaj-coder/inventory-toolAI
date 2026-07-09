@@ -1,32 +1,45 @@
-# AI Inventory Studio V3
+# AI Inventory Studio V3.1 Rules Fix
 
-This is the first full V3 package.
+This bundle fixes the issue where Generated Rules JSON was empty.
 
-## What it does
+## Why it was empty
 
-1. Upload vendor inventory CSV/XLSX
-2. Enter English instructions
-3. Analyze columns against accepted headers
-4. Review/edit mapping
-5. Create normalized input
-6. Create expanded inventory
-7. Generate QA report
-8. Download CSV/XLSX/config/report
+The previous parser only recognized a very narrow instruction pattern.
+If the text did not exactly match that pattern, the JSON remained:
 
-## Folder structure
+{
+  "pricing_rules": [],
+  "normalization_rules": [],
+  "variant_rules": []
+}
 
-configs/headers/
-- jewelry.csv
-- diamond.csv
-- lab-grown.csv
+## What changed
 
-These files should contain:
-- Setter name
-- Header variations
+Updated:
+- agents/rule_parser.py
+- agents/ai_analyzer.py
+- core/expander.py
 
-## Important
+Now instructions like this work:
 
-This V3 package includes a starter expansion engine in `core/expander.py`.
+"14k metal prices should be 500 and rest should be 1000"
 
-Later, we can replace that module with your original production inventory
-expansion logic while keeping the AI Studio UI and agent workflow.
+Generated JSON will include:
+
+{
+  "pricing_rules": [
+    {
+      "type": "metal_price_rule",
+      "price": 500,
+      "else_price": 1000
+    }
+  ]
+}
+
+It also supports:
+- create variants only for metal and shape
+- keep jewelry style static
+- remove duplicate tokens
+- normalize separators
+
+The pricing rule is applied during Create Inventory.
